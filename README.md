@@ -1,73 +1,156 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+# Nest Deployment on App Service Linux
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## Local Development
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+1. Setup a local environment starting with Nest CLI
 
-## Description
+   `npm i -g @nestjs/cli`
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+2. Create a workspace and initial application with:
 
-## Installation
+   `nest new project-name`
 
-```bash
-$ npm install
+3. Once the installation is done, cd into project-name folder and then start the srever using:
+
+   `npm run start`
+
+4. Browse the site with `http://localhost:3000` to get the default page.
+
+5. Edit src/main.ts and add `process.env.PORT` in `app.listnen()` function to aviod a hardcoded port for Azure App Service.
+
+   `await app.listen(process.env.PORT || 3000)`
+
+
+
+### Deployment Options
+
+There are multiple deployment options in App Service Linux as Continuous Deployment(GitHub/GitHub Actions, Bitbucket, Azure Repos, External Git, Local Git), Run from Package, FTP, etc.
+
+
+
+#### Local Git
+
+When using Local Git, you are using `App Service Build Service` also named as Oryx to build your application.
+
+To setup this option and deploy an angular app follow the next steps:
+
+1. Navigate to your web-app and select `Deployment Center` and then click on `Local Git` and then click on `Save`.
+
+2. Copy the remote git repository from Azure Portal.
+
+3. In your local terminal run the following commands in order:
+
+   ```
+   git add .
+   
+   git commit -m "Initial Commit"
+   
+   git remote add azure https://<sitename>.scm.azurewebsites.net:443/<sitename>.git
+   
+   git push azure master
+   ```
+
+4. Then Oryx will build your application.
+
+5. Add a startup command to avoid having the container recompile Typescript before starting:
+
+   `(Recommended) pm2 start dist/main.js --no-daemon`
+
+   `npm run start:prod`
+
+   `node dist/main`
+
+#### GitHub Actions
+
+You can quickly get started with GitHub Actions by using the App Service Deployment Center. This will automatically generate a workflow file based on your application stack and commit it to your GitHub repository in the correct directory. You can deploy a workflow manually using deployment credentials.
+
+[Use the Deployment Center](https://docs.microsoft.com/en-us/azure/app-service/deploy-github-actions?tabs=applevel#use-the-deployment-center)
+
+[Set up a workflow manually](https://docs.microsoft.com/en-us/azure/app-service/deploy-github-actions?tabs=applevel#set-up-a-workflow-manually])
+
+For Nest deployments is recommended to modify the default template with the following recommendations:
+
+1. Nest can create symbolic links to npm executables, you can include the symlinks when uploading the artifacts between jobs in the GitHub Agent.
+2. Compress and archive artifacts into a single zip file since Nest node_modules are big.
+3. Remove any npm run test if necessary.
+4. Validate current nodejs version.
+
+Here is an example with recommendations:
+
+name: Build and deploy Node.js app to Azure Web App - sampleapp
+
+
+
+```yaml
+name: Build and deploy Node.js app to Azure Web App - <appname>
+
+on:
+   push:
+      branches:
+         - master
+   workflow_dispatch:
+
+jobs:
+   build:
+      runs-on: ubuntu-latest
+
+      steps:
+         - uses: actions/checkout@v2
+
+         - name: Set up Node.js version
+           uses: actions/setup-node@v1
+           with:
+              node-version: '16.x'
+
+         - name: npm install, build, and test
+           run: |
+              npm install
+              npm run build --if-present
+         #          npm run test --if-present
+
+         - name: Zip all files for upload between jobs
+           run: zip --symlinks -r nest.zip ./*
+
+         - name: Upload artifact for deployment job
+           uses: actions/upload-artifact@v2
+           with:
+              name: node-app
+              path: nest.zip
+
+   deploy:
+      runs-on: ubuntu-latest
+      needs: build
+      environment:
+         name: 'Production'
+         url: ${{ yourown.webapp-url }}
+
+      steps:
+         - name: Download artifact from build job
+           uses: actions/download-artifact@v2
+           with:
+              name: node-app
+
+         - name: 'Deploy to Azure Web App'
+           id: deploy-to-webapp
+           uses: azure/webapps-deploy@v2
+           with:
+              app-name: 'saazne'
+              slot-name: 'Production'
+              publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_restofsecrets }}
+              package: nest.zip
+
+         - name: Delete zip file
+           run: rm nest.zip
 ```
 
-## Running the app
+After the deployement, add a startup command to avoid having the container recompile Typescript before starting like **Local Git**.
 
-```bash
-# development
-$ npm run start
+`(Recommended) pm2 start dist/main.js --no-daemon`
 
-# watch mode
-$ npm run start:dev
+`npm run start:prod`
 
-# production mode
-$ npm run start:prod
-```
+`node dist/main`
 
-## Test
+[Reference](https://azureossd.github.io/2022/02/11/Nest-Deployment-on-App-Service-Linux/index.html)
 
-```bash
-# unit tests
-$ npm run test
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](LICENSE).
