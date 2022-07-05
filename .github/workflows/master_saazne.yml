@@ -54,7 +54,7 @@ jobs:
         with:
           app-name: 'saazne'
           slot-name: 'Production'
-          publish-profile: $ #${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_6061D911DF8C4279ADF98E1E11120CCA }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_6061D911DF8C4279ADF98E1E11120CCA }}
           package: nest.zip
 
       - name: Delete zip file
